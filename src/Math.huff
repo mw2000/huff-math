@@ -42,4 +42,48 @@
     complete:
 }
 
- 
+#define macro MODEXP() = takes (3) returns (1) {
+    dup1
+    iszero MODULUS_ZERO jumpi             // Compare it to zero
+    MODULUS_NOT_ZERO jump
+    
+    MODULUS_NOT_ZERO:
+        // Setting up correct memory layout
+        0x20 push1 0x0 mstore     // Store length of base (32 bytes) at memory 0x00
+        0x20 0x20 mstore     // Store length of exponent (32 bytes) at memory 0x40
+        0x20 0x40 mstore     // Store length of modulus (32 bytes) at memory 0x80
+
+        0xa0 mstore          // Store 'modulus' at memory 0xa0
+        0x80 mstore          // Store 'exponent' at memory 0xc0
+        0x60 mstore          // Store 'base' at memory 0x60
+
+        // Prepare staticcall to precompiled contract
+
+        0x20                     // Output data size (32 bytes)
+        push1 0x0                // Output data memory
+        0xc0                     // Input data size (192 bytes)
+        push1 0x0                // Input data starting position
+        0x05                     // Address of the modexp precompiled contract (0x05)
+        gas                      // Gas provided
+        staticcall
+
+        // Verify the call success
+        iszero STATIC_CALL_FAILED jumpi // Check if the staticcall was successful
+        CALL_SUCCESSFUL jump           // If staticcall returned 0 (failure), revert
+
+    MODULUS_ZERO:
+        push1 0x0 mload
+        revert         // Revert if modulus is zero
+    
+    STATIC_CALL_FAILED:
+        push1 0x0 mload
+        revert         // Revert if staticcall failed
+    
+    // Label for call success
+    CALL_SUCCESSFUL:
+        push1 0x0 mload               // Load the result from memory location 0x00
+        END jump                 // Jump to the end of the macro
+    
+    END:
+    // The result of base^exponent % modulus is now on top of the stack
+}
